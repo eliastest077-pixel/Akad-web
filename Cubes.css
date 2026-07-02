@@ -1,0 +1,167 @@
+import React, { useEffect, useRef, useState } from "react";
+
+interface FadingVideoProps {
+  src: string | string[];
+  className?: string;
+  style?: React.CSSProperties;
+  playbackRate?: number;
+  loop?: boolean;
+  disableFade?: boolean;
+}
+
+export function FadingVideo({
+  src,
+  className,
+  style,
+  playbackRate = 1.0,
+  loop = true,
+  disableFade = false,
+}: FadingVideoProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [currentSrcIndex, setCurrentSrcIndex] = useState(0);
+  const [opacity, setOpacity] = useState(disableFade ? 1 : 0);
+  const isFadingOutRef = useRef(false);
+  const isFadingInRef = useRef(false);
+  const animationRef = useRef<number | null>(null);
+  const opacityRef = useRef(disableFade ? 1 : 0);
+
+  const sources = Array.isArray(src) ? src : [src];
+  const activeSrc = sources[currentSrcIndex];
+  const lastLoadedSrcRef = useRef<string | null>(null);
+
+  const setOpacityValue = (val: number) => {
+    opacityRef.current = val;
+    setOpacity(val);
+  };
+
+  // Ensure playback rate is updated when activeSrc or playbackRate changes
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) {
+      video.playbackRate = playbackRate;
+    }
+  }, [playbackRate, activeSrc]);
+
+  // If the active source changes, load and play it immediately
+  useEffect(() => {
+    if (lastLoadedSrcRef.current === activeSrc) {
+      return;
+    }
+    lastLoadedSrcRef.current = activeSrc;
+
+    isFadingOutRef.current = false;
+    isFadingInRef.current = false;
+    setOpacityValue(disableFade ? 1 : 0);
+
+    const video = videoRef.current;
+    if (video) {
+      video.load();
+      video.play().catch(() => {});
+    }
+  }, [activeSrc, disableFade]);
+
+  const animateOpacity = (target: number, duration: number, callback?: () => void) => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    const startTime = performance.now();
+    const startOpacity = opacityRef.current;
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const newOpacity = startOpacity + (target - startOpacity) * progress;
+      setOpacityValue(newOpacity);
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(tick);
+      } else {
+        if (callback) callback();
+      }
+    };
+    animationRef.current = requestAnimationFrame(tick);
+  };
+
+  const handleLoadedData = () => {
+    const video = videoRef.current;
+    if (video) {
+      video.playbackRate = playbackRate;
+    }
+    if (disableFade) {
+      setOpacityValue(1);
+      return;
+    }
+    isFadingInRef.current = true;
+    isFadingOutRef.current = false;
+    animateOpacity(1, 500, () => {
+      isFadingInRef.current = false;
+    });
+  };
+
+  const handleTimeUpdate = () => {
+    if (disableFade) return;
+    const video = videoRef.current;
+    if (!video || isFadingOutRef.current) return;
+
+    // If loop is false, do not fade out as we approach the end
+    if (!loop) return;
+
+    const remaining = video.duration - video.currentTime;
+    if (video.duration && remaining <= 0.55) {
+      isFadingOutRef.current = true;
+      isFadingInRef.current = false;
+      animateOpacity(0, 550);
+    }
+  };
+
+  const handleEnded = () => {
+    if (disableFade) return;
+    if (!loop) {
+      // Keep on the last frame, do not loop or reset
+      setOpacityValue(1);
+      return;
+    }
+
+    if (sources.length === 1) {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = 0;
+        isFadingOutRef.current = false;
+        video.play().catch(() => {});
+        // fade back in
+        isFadingInRef.current = true;
+        animateOpacity(1, 500, () => {
+          isFadingInRef.current = false;
+        });
+      }
+    } else {
+      setCurrentSrcIndex((prev) => (prev + 1) % sources.length);
+    }
+  };
+
+  // Ensure cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <video
+      ref={videoRef}
+      src={activeSrc}
+      className={className}
+      style={{ ...style, opacity, transition: "none" }}
+      autoPlay
+      muted
+      playsInline
+      preload="auto"
+      loop={disableFade ? loop : undefined}
+      onLoadedData={handleLoadedData}
+      onTimeUpdate={handleTimeUpdate}
+      onEnded={disableFade ? undefined : handleEnded}
+    />
+  );
+}

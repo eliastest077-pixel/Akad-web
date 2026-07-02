@@ -1,0 +1,381 @@
+import React, { useState, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Upload, File, FileArchive, CheckCircle2, AlertCircle, RefreshCw, Layers, FileCode, Play, Eye } from "lucide-react";
+
+interface ExtractedFile {
+  name: string;
+  size: string;
+  type: "json" | "map" | "audio" | "csv";
+  data: string;
+}
+
+interface EarthArchiveUploaderProps {
+  showToast: (msg: string) => void;
+}
+
+export const EarthArchiveUploader: React.FC<EarthArchiveUploaderProps> = ({ showToast }) => {
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "extracting" | "success" | "error">("idle");
+  const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState("");
+  const [extractedContents, setExtractedContents] = useState<ExtractedFile[]>([]);
+  const [selectedPreviewFile, setSelectedPreviewFile] = useState<ExtractedFile | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Simulated extraction steps for .zip files
+  const ZIP_EXTRACTION_STEPS = [
+    { progress: 15, status: "Analyzing archive signature..." },
+    { progress: 35, status: "Reading compression tables..." },
+    { progress: 60, status: "Extracting geological data layers..." },
+    { progress: 85, status: "Validating sensor epoch indexes..." },
+    { progress: 100, status: "Earth Archive integrity check passed." }
+  ];
+
+  const MOCK_ZIP_CONTENTS: ExtractedFile[] = [
+    {
+      name: "lithos_strata_coordinates.json",
+      size: "1.2 MB",
+      type: "json",
+      data: `{ "epoch": "Phanerozoic", "crustDepth": "42km", "strataCount": 18, "coordinates": [47.6062, -122.3321] }`
+    },
+    {
+      name: "abyssal_seismic_readings.csv",
+      size: "840 KB",
+      type: "csv",
+      data: "Time,Depth_km,Magnitude,Frequency\\n00:02:15,10.9,4.2,12Hz\\n00:08:40,11.2,3.8,8Hz\\n00:14:12,10.7,5.1,15Hz"
+    },
+    {
+      name: "mycelium_pulse_signature.wav",
+      size: "4.8 MB",
+      type: "audio",
+      data: "Low frequency biological pulse stream (32Hz oscillations recorded in deep loam layers)"
+    }
+  ];
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDragActive(true);
+    } else if (e.type === "dragleave") {
+      setIsDragActive(false);
+    }
+  };
+
+  const processFile = (selectedFile: File) => {
+    setFile(selectedFile);
+    setSelectedPreviewFile(null);
+    const isZip = selectedFile.name.endsWith(".zip") || selectedFile.type === "application/zip" || selectedFile.type === "application/x-zip-compressed";
+
+    if (isZip) {
+      setUploadStatus("uploading");
+      setProgress(0);
+      setCurrentStep("Uploading time archive...");
+
+      // Phase 1: Upload Progress simulation (1.2 seconds)
+      let currentProgress = 0;
+      const uploadInterval = setInterval(() => {
+        currentProgress += 10;
+        setProgress(Math.min(currentProgress, 100));
+        if (currentProgress >= 100) {
+          clearInterval(uploadInterval);
+          
+          // Phase 2: Extraction simulation (2.5 seconds)
+          setUploadStatus("extracting");
+          let stepIndex = 0;
+          
+          const runExtractionSteps = () => {
+            if (stepIndex < ZIP_EXTRACTION_STEPS.length) {
+              const current = ZIP_EXTRACTION_STEPS[stepIndex];
+              setProgress(current.progress);
+              setCurrentStep(current.status);
+              stepIndex++;
+              setTimeout(runExtractionSteps, 500);
+            } else {
+              setUploadStatus("success");
+              setExtractedContents(MOCK_ZIP_CONTENTS);
+              showToast(`Archive ${selectedFile.name} successfully loaded into Earth Registry.`);
+            }
+          };
+          
+          setTimeout(runExtractionSteps, 300);
+        }
+      }, 100);
+    } else {
+      // Normal single file flow
+      setUploadStatus("uploading");
+      setProgress(0);
+      setCurrentStep("Scanning Earth file...");
+
+      let currentProgress = 0;
+      const interval = setInterval(() => {
+        currentProgress += 15;
+        setProgress(Math.min(currentProgress, 100));
+        if (currentProgress >= 100) {
+          clearInterval(interval);
+          setUploadStatus("success");
+          setExtractedContents([
+            {
+              name: selectedFile.name,
+              size: `${(selectedFile.size / 1024).toFixed(1)} KB`,
+              type: selectedFile.name.split('.').pop() === 'json' ? 'json' : 'csv',
+              data: `Single document upload successfully registered on: ${new Date().toLocaleDateString()}`
+            }
+          ]);
+          showToast(`File ${selectedFile.name} registered.`);
+        }
+      }, 120);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
+  const resetUploader = () => {
+    setFile(null);
+    setUploadStatus("idle");
+    setProgress(0);
+    setCurrentStep("");
+    setExtractedContents([]);
+    setSelectedPreviewFile(null);
+  };
+
+  return (
+    <div className="relative w-full max-w-3xl mx-auto rounded-3xl border border-white/10 bg-[#070e08]/90 backdrop-blur-2xl p-6 sm:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.8)] z-10 overflow-hidden">
+      {/* Background ambient gradient flare */}
+      <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full filter blur-[80px] pointer-events-none" />
+      
+      {/* Header */}
+      <div className="text-left mb-6 pb-4 border-b border-white/5">
+        <span className="text-[10px] font-mono tracking-[0.3em] text-emerald-400 uppercase font-semibold">
+          Data Depository
+        </span>
+        <h2 className="font-heading italic text-3xl text-neutral-100 tracking-tight mt-1">
+          Deep Strata Register
+        </h2>
+        <p className="text-xs text-white/50 font-light mt-1.5 leading-relaxed">
+          Provide your local sensor telemetry archives (<span className="text-emerald-400 font-mono">.zip</span>, <span className="text-emerald-400 font-mono">.json</span> or <span className="text-emerald-400 font-mono">.csv</span>) to fuse historical strata records into the Earth's Deep Registry database.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+        {/* Left column: Drag & Drop Dropzone */}
+        <div className="md:col-span-7">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip,.json,.csv"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
+          <AnimatePresence mode="wait">
+            {uploadStatus === "idle" && (
+              <motion.div
+                key="dropzone"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                onClick={triggerFileInput}
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                className={`cursor-target relative h-64 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center transition-all duration-300 select-none overflow-hidden ${
+                  isDragActive
+                    ? "border-emerald-400 bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+                    : "border-white/10 hover:border-emerald-500/40 bg-white/[0.02] hover:bg-white/[0.04]"
+                }`}
+              >
+                {/* Visual grid grid lines inside the drop zone */}
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col items-center">
+                  <div className="h-14 w-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-emerald-400/80 mb-4 group-hover:scale-105 transition-transform">
+                    <Upload className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-body font-medium text-white mb-1">
+                    Drag & Drop Strata Archives Here
+                  </h4>
+                  <p className="text-[11px] text-white/40 font-light max-w-xs mb-4">
+                    Supports <span className="text-white/60 font-medium">.zip archives</span>, JSON maps, or raw CSV sheets.
+                  </p>
+                  <button
+                    type="button"
+                    className="cursor-target px-4 py-2 rounded-full border border-white/10 hover:border-emerald-500/30 bg-neutral-900/40 text-[10px] font-mono uppercase tracking-wider text-white hover:text-emerald-400 transition-all active:scale-95 shadow-md"
+                  >
+                    Select File
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {(uploadStatus === "uploading" || uploadStatus === "extracting") && (
+              <motion.div
+                key="processing"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="h-64 rounded-2xl border border-white/10 bg-white/[0.01] flex flex-col items-center justify-center p-6 text-center"
+              >
+                <div className="relative w-16 h-16 mb-4 flex items-center justify-center">
+                  {/* Outer spinning ring */}
+                  <span className="absolute inset-0 rounded-full border-2 border-emerald-500/20 border-t-emerald-400 animate-spin" style={{ animationDuration: '0.8s' }} />
+                  {file?.name.endsWith('.zip') ? (
+                    <FileArchive className="w-7 h-7 text-emerald-400" />
+                  ) : (
+                    <File className="w-7 h-7 text-emerald-400" />
+                  )}
+                </div>
+
+                <span className="font-mono text-[10px] tracking-wider text-emerald-400 uppercase font-medium mb-1">
+                  {uploadStatus === "uploading" ? "Buffering Data Streams" : "Fusing Strata Core"}
+                </span>
+                <h4 className="text-sm font-medium text-white mb-4 truncate max-w-xs">
+                  {file?.name}
+                </h4>
+                
+                {/* Premium fluid progress bar */}
+                <div className="w-64 h-1.5 bg-white/5 rounded-full overflow-hidden relative mb-2">
+                  <div
+                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-200"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                
+                <span className="text-[10px] font-mono text-white/50 tracking-wide transition-all animate-pulse">
+                  {currentStep} ({progress}%)
+                </span>
+              </motion.div>
+            )}
+
+            {uploadStatus === "success" && (
+              <motion.div
+                key="success"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="h-64 rounded-2xl border border-emerald-500/20 bg-emerald-950/10 flex flex-col items-center justify-center p-6 text-center relative"
+              >
+                {/* Sparkle or radial glow behind check */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                <div className="h-14 w-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <h4 className="text-sm font-body font-semibold text-white mb-1">
+                  Strata Data Fused
+                </h4>
+                <p className="text-xs text-white/50 font-light max-w-xs mb-5">
+                  The contents of <span className="text-white/80 font-medium">{file?.name}</span> have been successfully mapped to the earth's chronology grid.
+                </p>
+                <button
+                  onClick={resetUploader}
+                  className="cursor-target px-4 py-2 rounded-full border border-white/10 hover:bg-white/5 text-[10px] font-mono uppercase tracking-widest text-white/80 hover:text-white flex items-center gap-1.5 transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Register New Strata
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Right column: Extracted database records display */}
+        <div className="md:col-span-5 h-full flex flex-col">
+          <div className="rounded-2xl border border-white/5 bg-black/40 p-4 flex-1 flex flex-col h-64 overflow-hidden">
+            <span className="text-[9px] font-mono tracking-widest text-white/40 uppercase block mb-3 pb-1.5 border-b border-white/5">
+              Mapped Strata Indexes ({extractedContents.length})
+            </span>
+
+            {extractedContents.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40 py-10">
+                <Layers className="w-8 h-8 text-white/40 mb-2 stroke-[1.5]" />
+                <p className="text-xs text-white/60 font-light">
+                  No active telemetry layers registered.
+                </p>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scroll text-left">
+                {extractedContents.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedPreviewFile(item)}
+                    className={`cursor-target w-full rounded-xl p-2.5 border text-left transition-all flex items-center justify-between gap-3 ${
+                      selectedPreviewFile?.name === item.name
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-white"
+                        : "bg-white/[0.01] border-white/5 hover:border-white/10 text-white/80 hover:text-white"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        item.type === "json" ? "bg-amber-500/10 text-amber-400" :
+                        item.type === "csv" ? "bg-sky-500/10 text-sky-400" : "bg-purple-500/10 text-purple-400"
+                      }`}>
+                        <FileCode className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate leading-tight">
+                          {item.name}
+                        </p>
+                        <span className="text-[9px] font-mono text-white/40 uppercase">
+                          {item.type} • {item.size}
+                        </span>
+                      </div>
+                    </div>
+                    <Eye className="w-3.5 h-3.5 text-white/30 hover:text-white transition-colors shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Preview Section below columns */}
+      <AnimatePresence>
+        {selectedPreviewFile && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-4 border-t border-white/5 pt-4 overflow-hidden text-left"
+          >
+            <div className="rounded-xl border border-white/5 bg-black/60 p-4 font-mono">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] text-emerald-400 uppercase tracking-widest font-semibold flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Preview: {selectedPreviewFile.name}
+                </span>
+                <span className="text-[9px] text-white/30 uppercase">{selectedPreviewFile.size}</span>
+              </div>
+              <pre className="text-xs text-white/80 leading-relaxed font-mono overflow-x-auto whitespace-pre-wrap max-h-32 custom-scroll bg-black/30 p-3 rounded-lg border border-white/5">
+                {selectedPreviewFile.data}
+              </pre>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};

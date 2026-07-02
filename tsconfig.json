@@ -1,0 +1,6 @@
+{
+  "name": "Akad Web",
+  "description": "An immersive dark-mode digital chronicle celebrating the patience, beauty, and silent cycles of nature with fluid animations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

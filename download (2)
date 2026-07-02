@@ -1,0 +1,608 @@
+import React, { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Play, Pause, SkipForward, Volume2, VolumeX, Heart, X, Music } from "lucide-react";
+
+// Web Audio API Soundscape Synth Engine
+class AmbientSynthEngine {
+  private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private nodes: AudioNode[] = [];
+  private activeTrackId: number = -1;
+  private isRunning: boolean = false;
+  private volume: number = 0.5;
+
+  constructor() {}
+
+  init() {
+    if (this.ctx) return;
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    this.ctx = new AudioContextClass();
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+    this.masterGain.connect(this.ctx.destination);
+  }
+
+  setVolume(vol: number) {
+    this.volume = vol;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.linearRampToValueAtTime(vol, this.ctx.currentTime + 0.1);
+    }
+  }
+
+  stopAll() {
+    this.nodes.forEach(node => {
+      try {
+        (node as any).stop?.();
+      } catch (e) {}
+      try {
+        node.disconnect();
+      } catch (e) {}
+    });
+    this.nodes = [];
+    this.isRunning = false;
+  }
+
+  playTrack(trackId: number) {
+    this.init();
+    this.stopAll();
+    
+    if (!this.ctx || !this.masterGain) return;
+
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume();
+    }
+
+    this.activeTrackId = trackId;
+    this.isRunning = true;
+
+    // Track Generators
+    if (trackId === 0) {
+      // 0: OLD-GROWTH AMBIENT (Warm Forest Canopy - Golden Drone & Wind)
+      this.createWarmDrone(110, 0.4); // A2 drone
+      this.createWarmDrone(165, 0.25); // E3 fifth
+      this.createModulatedFilterNoise(180, 280, 0.04); // Gentle wind
+      this.createRandomTicks(800, 3000, 0.08); // High root crackle
+    } else if (trackId === 1) {
+      // 1: HADOPELAGIC WAVE (Deep Sub-Oceanic Trenches)
+      this.createWarmDrone(73.4, 0.5); // D2 sub
+      this.createWarmDrone(110, 0.2); // A2 fifth
+      this.createModulatedFilterNoise(60, 130, 0.08); // Heavy rolling current
+    } else if (trackId === 2) {
+      // 2: MYCELIAL PULSES (Rhythmic Spore Flow)
+      this.createWarmDrone(130.8, 0.3); // C3 root
+      this.createWarmDrone(196, 0.2); // G3 fifth
+      this.createPulsingNote(261.6, 2.5, 0.15); // Pulsing middle C
+      this.createPulsingNote(392, 4.0, 0.1); // Pulsing high G
+    } else {
+      // 3: TEMPORAL DRIFT (Ancient Solar Winds & Ethereal Pads)
+      this.createWarmDrone(98, 0.3); // G2 root
+      this.createWarmDrone(146.8, 0.2); // D3 fifth
+      this.createEtherealSweep(293.7, 440, 8.0, 0.2); // Modulating drift pad
+    }
+  }
+
+  // --- SYNTH GENERATOR UTILITIES ---
+
+  private createWarmDrone(frequency: number, intensity: number) {
+    if (!this.ctx || !this.masterGain) return;
+
+    // Oscillators combining Warm Sine + Soft Triangle
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gainNode1 = this.ctx.createGain();
+    const gainNode2 = this.ctx.createGain();
+    const lowpass = this.ctx.createBiquadFilter();
+
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(frequency, this.ctx.currentTime);
+    osc1.frequency.setValueAtTime(frequency + (Math.random() * 0.4 - 0.2), this.ctx.currentTime);
+
+    osc2.type = "triangle";
+    osc2.frequency.setValueAtTime(frequency * 2, this.ctx.currentTime); // Harmonic octave
+
+    // Subtle LFO modulation for organic sway
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    lfo.type = "sine";
+    lfo.frequency.setValueAtTime(0.08 + Math.random() * 0.05, this.ctx.currentTime);
+    lfoGain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+
+    gainNode1.gain.setValueAtTime(intensity * 0.7, this.ctx.currentTime);
+    gainNode2.gain.setValueAtTime(intensity * 0.3, this.ctx.currentTime);
+
+    lowpass.type = "lowpass";
+    lowpass.frequency.setValueAtTime(frequency * 3, this.ctx.currentTime);
+
+    // Connections
+    lfo.connect(lfoGain);
+    lfoGain.connect(gainNode1.gain);
+
+    osc1.connect(gainNode1);
+    osc2.connect(gainNode2);
+    
+    gainNode1.connect(lowpass);
+    gainNode2.connect(lowpass);
+    lowpass.connect(this.masterGain);
+
+    osc1.start();
+    osc2.start();
+    lfo.start();
+
+    this.nodes.push(osc1, osc2, lfo, gainNode1, gainNode2, lfoGain, lowpass);
+  }
+
+  private createModulatedFilterNoise(minFreq: number, maxFreq: number, intensity: number) {
+    if (!this.ctx || !this.masterGain) return;
+
+    // White Noise Source
+    const bufferSize = this.ctx.sampleRate * 2;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noiseNode = this.ctx.createBufferSource();
+    noiseNode.buffer = buffer;
+    noiseNode.loop = true;
+
+    // Resonant Biquad Filter to simulate wind or waves
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.Q.setValueAtTime(1.5, this.ctx.currentTime);
+
+    // LFO to sweep the filter frequency
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    lfo.type = "sine";
+    lfo.frequency.setValueAtTime(0.05, this.ctx.currentTime);
+    
+    const centerFreq = (minFreq + maxFreq) / 2;
+    const depth = (maxFreq - minFreq) / 2;
+    lfoGain.gain.setValueAtTime(depth, this.ctx.currentTime);
+    filter.frequency.setValueAtTime(centerFreq, this.ctx.currentTime);
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.setValueAtTime(intensity, this.ctx.currentTime);
+
+    // Connections
+    lfo.connect(lfoGain);
+    lfoGain.connect(filter.frequency);
+    
+    noiseNode.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(this.masterGain);
+
+    noiseNode.start();
+    lfo.start();
+
+    this.nodes.push(noiseNode, filter, lfo, lfoGain, gainNode);
+  }
+
+  private createRandomTicks(minIntervalMs: number, maxIntervalMs: number, intensity: number) {
+    if (!this.ctx || !this.masterGain) return;
+
+    const tickGain = this.ctx.createGain();
+    tickGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    tickGain.connect(this.masterGain);
+
+    let isTickRunning = true;
+
+    const triggerTick = () => {
+      if (!isTickRunning || !this.ctx || !tickGain) return;
+
+      const osc = this.ctx.createOscillator();
+      const envelope = this.ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1000 + Math.random() * 1200, this.ctx.currentTime);
+
+      envelope.gain.setValueAtTime(0, this.ctx.currentTime);
+      envelope.gain.linearRampToValueAtTime(intensity, this.ctx.currentTime + 0.005);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.15);
+
+      osc.connect(envelope);
+      envelope.connect(tickGain);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.2);
+
+      const nextInterval = minIntervalMs + Math.random() * (maxIntervalMs - minIntervalMs);
+      setTimeout(triggerTick, nextInterval);
+    };
+
+    triggerTick();
+
+    // Fake stop hook
+    const stopper = {
+      stop: () => {
+        isTickRunning = false;
+      },
+      disconnect: () => {
+        tickGain.disconnect();
+      }
+    };
+
+    this.nodes.push(stopper as any);
+  }
+
+  private createPulsingNote(frequency: number, intervalSec: number, intensity: number) {
+    if (!this.ctx || !this.masterGain) return;
+
+    const noteGain = this.ctx.createGain();
+    noteGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    noteGain.connect(this.masterGain);
+
+    let isPulseRunning = true;
+
+    const triggerPulse = () => {
+      if (!isPulseRunning || !this.ctx || !noteGain) return;
+
+      const osc = this.ctx.createOscillator();
+      const envelope = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(frequency, this.ctx.currentTime);
+
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(frequency * 1.5, this.ctx.currentTime);
+
+      envelope.gain.setValueAtTime(0, this.ctx.currentTime);
+      envelope.gain.linearRampToValueAtTime(intensity, this.ctx.currentTime + 1.2); // Slow attack
+      envelope.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + intervalSec - 0.2); // Slow decay
+
+      osc.connect(filter);
+      filter.connect(envelope);
+      envelope.connect(noteGain);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + intervalSec);
+
+      setTimeout(triggerPulse, intervalSec * 1000);
+    };
+
+    triggerPulse();
+
+    const stopper = {
+      stop: () => {
+        isPulseRunning = false;
+      },
+      disconnect: () => {
+        noteGain.disconnect();
+      }
+    };
+
+    this.nodes.push(stopper as any);
+  }
+
+  private createEtherealSweep(freqStart: number, freqEnd: number, duration: number, intensity: number) {
+    if (!this.ctx || !this.masterGain) return;
+
+    const sweepGain = this.ctx.createGain();
+    sweepGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    sweepGain.connect(this.masterGain);
+
+    let isSweepRunning = true;
+
+    const triggerSweep = () => {
+      if (!isSweepRunning || !this.ctx || !sweepGain) return;
+
+      const osc = this.ctx.createOscillator();
+      const envelope = this.ctx.createGain();
+
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freqStart, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(freqEnd, this.ctx.currentTime + duration);
+
+      envelope.gain.setValueAtTime(0, this.ctx.currentTime);
+      envelope.gain.linearRampToValueAtTime(intensity, this.ctx.currentTime + duration * 0.4);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+      osc.connect(envelope);
+      envelope.connect(sweepGain);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + duration);
+
+      setTimeout(triggerSweep, duration * 1000 + 100);
+    };
+
+    triggerSweep();
+
+    const stopper = {
+      stop: () => {
+        isSweepRunning = false;
+      },
+      disconnect: () => {
+        sweepGain.disconnect();
+      }
+    };
+
+    this.nodes.push(stopper as any);
+  }
+}
+
+// Global engine singleton instance
+const synthEngine = new AmbientSynthEngine();
+
+export interface Track {
+  id: number;
+  title: string;
+  category: string;
+  description: string;
+  duration: string;
+}
+
+const TRACKS_DATABASE: Track[] = [
+  {
+    id: 0,
+    title: "Old-Growth Ambient",
+    category: "Mycelial Canopy",
+    description: "Deep, soothing forest roots floor drone with intermittent microtonal crackles simulating continuous sub-canopy patience.",
+    duration: "Continuous Loop",
+  },
+  {
+    id: 1,
+    title: "Hadopelagic Wave",
+    category: "Deep Trench",
+    description: "Heavy oceanic sub-bass and swept pressure filter dynamics replicating deep deep water and tectonic shift vibrations.",
+    duration: "Continuous Loop",
+  },
+  {
+    id: 2,
+    title: "Mycelial Pulses",
+    category: "Spore Flow",
+    description: "Gentle pulsing organ-style intervals cascading at varying cycles, highlighting rhythmic underground organic expansion.",
+    duration: "Continuous Loop",
+  },
+  {
+    id: 3,
+    title: "Temporal Drift",
+    category: "Solar Dust",
+    description: "Slowly shifting ethereal triangle waves gliding elegantly across seventh chords, inspired by solar wind cycles.",
+    duration: "Continuous Loop",
+  }
+];
+
+interface QuietpressPlayerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentTrackIdx: number;
+  setCurrentTrackIdx: (idx: number) => void;
+  isLikedTrack: boolean;
+  setIsLikedTrack: (liked: boolean) => void;
+  showToast: (msg: string) => void;
+}
+
+export const QuietpressPlayer: React.FC<QuietpressPlayerProps> = ({
+  isOpen,
+  onClose,
+  currentTrackIdx,
+  setCurrentTrackIdx,
+  isLikedTrack,
+  setIsLikedTrack,
+  showToast
+}) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(50);
+  const [isMuted, setIsMuted] = useState(false);
+  
+  // Equalizer visual animation frame state
+  const [eqHeights, setEqHeights] = useState<number[]>([15, 10, 20, 12, 18, 14, 22]);
+
+  // Sync volume with synth engine
+  useEffect(() => {
+    synthEngine.setVolume(isMuted ? 0 : volume / 100);
+  }, [volume, isMuted]);
+
+  // Visualizer EQ animation
+  useEffect(() => {
+    if (!isPlaying) {
+      setEqHeights([3, 3, 3, 3, 3, 3, 3]);
+      return;
+    }
+
+    let frame: number;
+    const animate = () => {
+      setEqHeights(
+        Array.from({ length: 7 }).map(() => Math.floor(Math.random() * 24) + 4)
+      );
+      frame = requestAnimationFrame(animate);
+    };
+
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [isPlaying]);
+
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      synthEngine.stopAll();
+      setIsPlaying(false);
+    } else {
+      synthEngine.playTrack(currentTrackIdx);
+      setIsPlaying(true);
+      showToast(`Playing ambient: ${TRACKS_DATABASE[currentTrackIdx].title}`);
+    }
+  };
+
+  const handleNextTrack = () => {
+    const nextIdx = (currentTrackIdx + 1) % TRACKS_DATABASE.length;
+    setCurrentTrackIdx(nextIdx);
+    setIsLikedTrack(false);
+
+    if (isPlaying) {
+      synthEngine.playTrack(nextIdx);
+      showToast(`Switched to: ${TRACKS_DATABASE[nextIdx].title}`);
+    } else {
+      showToast(`Selected track: ${TRACKS_DATABASE[nextIdx].title}`);
+    }
+  };
+
+  const toggleMute = () => {
+    setIsMuted(!isMuted);
+  };
+
+  const toggleLike = () => {
+    const newLiked = !isLikedTrack;
+    setIsLikedTrack(newLiked);
+    showToast(newLiked ? "Added track to Earth Registry Favorites" : "Removed track from favorites");
+  };
+
+  // Safe release of Audio Context on unmount
+  useEffect(() => {
+    return () => {
+      synthEngine.stopAll();
+    };
+  }, []);
+
+  const activeTrack = TRACKS_DATABASE[currentTrackIdx];
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 30, scale: 0.95 }}
+          transition={{ type: "spring", damping: 25, stiffness: 350 }}
+          className="fixed bottom-6 right-6 z-50 w-full max-w-sm rounded-[2rem] border border-white/10 bg-[#091409]/90 backdrop-blur-2xl p-6 shadow-[0_20px_50px_rgba(2,20,10,0.6)] flex flex-col pointer-events-auto"
+        >
+          {/* Subtle Ambient Glow inside widget */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/5 to-transparent pointer-events-none rounded-[2rem]" />
+
+          {/* Header */}
+          <div className="relative z-10 flex items-center justify-between mb-4 pb-3 border-b border-white/5">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-400">
+                <Music className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <span className="font-mono text-[9px] tracking-widest text-emerald-500 uppercase font-semibold">
+                  Ambient Press
+                </span>
+                <h4 className="text-xs text-white/40 font-mono tracking-wider -mt-0.5">
+                  Quietpress v1.0.4
+                </h4>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="cursor-target h-7 w-7 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-all active:scale-90"
+              aria-label="Close soundtrack player"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Body Track Visualizer Card */}
+          <div className="relative z-10 bg-black/45 rounded-2xl p-4 border border-white/5 mb-4 flex items-center gap-4">
+            {/* Album/Track Emblem with Visualizer */}
+            <div className="relative w-14 h-14 rounded-xl bg-gradient-to-b from-emerald-500/20 to-neutral-900 border border-emerald-500/30 flex items-center justify-center overflow-hidden shrink-0">
+              {isPlaying ? (
+                <div className="flex items-end gap-[2px] h-6">
+                  {eqHeights.map((h, idx) => (
+                    <motion.div
+                      key={idx}
+                      className="w-[3px] bg-emerald-500 rounded-full"
+                      style={{ height: `${h}px` }}
+                      transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Music className="w-5 h-5 text-emerald-500/50" />
+              )}
+            </div>
+
+            {/* Info Text */}
+            <div className="min-w-0 flex-1">
+              <span className="text-[9px] font-mono tracking-widest text-emerald-400/80 uppercase font-medium">
+                {activeTrack.category}
+              </span>
+              <h3 className="font-heading italic text-lg text-white truncate leading-none mt-0.5">
+                {activeTrack.title}
+              </h3>
+              <p className="text-[10px] text-white/40 font-mono mt-1.5 font-light leading-snug">
+                Real-time Synthesized Stream
+              </p>
+            </div>
+          </div>
+
+          {/* Description Area */}
+          <div className="relative z-10 text-left mb-5">
+            <p className="text-[10px] text-white/50 leading-relaxed font-light min-h-[44px]">
+              {activeTrack.description}
+            </p>
+          </div>
+
+          {/* Media Controls Slider & Buttons */}
+          <div className="relative z-10 flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePlayPause}
+                className="cursor-target h-12 w-12 rounded-full bg-white text-black hover:bg-emerald-400 hover:text-black flex items-center justify-center transition-all active:scale-95 shadow-md shadow-emerald-500/10"
+                aria-label={isPlaying ? "Pause ambient sound" : "Play ambient sound"}
+              >
+                {isPlaying ? (
+                  <Pause className="w-5 h-5 fill-current" />
+                ) : (
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                )}
+              </button>
+
+              <button
+                onClick={handleNextTrack}
+                className="cursor-target h-10 w-10 rounded-full hover:bg-white/10 flex items-center justify-center text-white/70 hover:text-white transition-all active:scale-90"
+                aria-label="Skip to next track"
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            </div>
+
+            <button
+              onClick={toggleLike}
+              className={`cursor-target h-10 w-10 rounded-full flex items-center justify-center border transition-all active:scale-90 ${
+                isLikedTrack
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                  : "border-white/5 text-white/40 hover:text-white hover:border-white/10"
+              }`}
+              aria-label="Favorite soundtrack"
+            >
+              <Heart className={`w-4 h-4 ${isLikedTrack ? "fill-current" : ""}`} />
+            </button>
+          </div>
+
+          {/* Volume Control */}
+          <div className="relative z-10 flex items-center gap-3 bg-black/20 px-3.5 py-2.5 rounded-xl border border-white/5">
+            <button
+              onClick={toggleMute}
+              className="cursor-target text-white/40 hover:text-white transition-colors"
+              aria-label={isMuted ? "Unmute" : "Mute"}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-4 h-4" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={isMuted ? 0 : volume}
+              onChange={(e) => {
+                setVolume(Number(e.target.value));
+                if (isMuted) setIsMuted(false);
+              }}
+              className="cursor-target w-full h-1 bg-white/10 rounded-full appearance-none accent-emerald-500"
+              style={{
+                background: `linear-gradient(to right, #10b981 0%, #10b981 ${isMuted ? 0 : volume}%, rgba(255,255,255,0.1) ${isMuted ? 0 : volume}%, rgba(255,255,255,0.1) 100%)`
+              }}
+            />
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
